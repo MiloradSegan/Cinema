@@ -374,7 +374,6 @@ public class FilmController {
 
 		@RequestMapping(value = "/add3", method = RequestMethod.POST)
 		public String addFilmSlika(@RequestParam int id, @RequestParam MultipartFile fileUpload) throws IOException {
-
 			Film f = fs.IdFilm(id);
 			f.setSlika(fileUpload.getBytes());
 			fs.saveFilm(f);
@@ -407,10 +406,7 @@ public class FilmController {
 			
 				model.put("film", fs.IdFilm(film.getId()));
 				model.put("error", "Rezervacije su dozvoljene samo registrovanim korisnicia");
-				return "detaljiFilm2";
-			
-			
-			
+				return "detaljiFilm2";	
 
 		}
 	
@@ -422,6 +418,70 @@ public class FilmController {
 			fs.saveFilm(uploadFile);
 			return "success";
 		}
+		
+		
+	// METODE ZA PREPORUKU FILMOVA
+	
+		// Vraca listu suseda za ulogovanog korisnika 
+		public List<Korisnik> listaSuseda(Korisnik korisnik) {
+			ArrayList<Korisnik> susedi = crateSusede(korisnik);
+			return susedi;
+		}
+		
+		// Kreira listu suseda za ulogovanog korisna
+		private ArrayList<Korisnik> crateSusede(Korisnik activeUser) {
+			ArrayList<Korisnik> susedi = new ArrayList<Korisnik>(); 		//Lista u koju ce biti smesteni susedi 
+			List<Korisnik> sviUseri = ks.findAllByRoleUSER();  				// Lista svih korisnika sa rolom USER
+				for(Korisnik k:sviUseri ) {                    				// Poredi ulogovanog korisnika sa ostalim korisnicima
+					if(k.getIdKorisnik() != activeUser.getIdKorisnik()) {	// Izbegavamo poredjenje sa samim sobom
+						double sim = calculateSim(activeUser,k);			// Racuna simetricnost izmedju dva korisnika
+						if(sim<1) {											// Ako je zadovoljen uslov dodaje korisnika na listu suseda
+							susedi.add(k);									// Sto je granica manja u ovom slucaju je 1, to su korisnici slicniji
+						}
+					}
+				}
+			return susedi;
+		}
+
+		// Racuna simetricnosts izmedju dva korisnika 
+		private double calculateSim(Korisnik active, Korisnik p) {
+			int zajednickiFilmovi =0; 								// Broj filmova koji su ocenili oba korisnika
+			double razlikaOcena=0;									// Razlika u ocenama						
+				for(Ocena o1:active.getOcene()) {					// Prolazi kroz sve ocena oba korisnika i proverava da li su ocenili isti film
+					for(Ocena o2:p.getOcene()) {					// za svaku ocenu u bazi cuva se idFilma i idKorisnika koji je oceni film
+						Film f1 = o1.getFilm();
+						Film f2 = o2.getFilm();
+						
+						if(f1.getId() == f2.getId()) {				// ako su ocenili isti film
+							zajednickiFilmovi++;					// povecava se broj zajednickih filmova 
+							razlikaOcena+= Math.abs(o1.getOcena()-o2.getOcena()); //racuna se razlika ocena
+						}
+					}	
+				}
+				if(zajednickiFilmovi>0) {
+					return razlikaOcena/zajednickiFilmovi;			// racuna simetricnost izmedju dva korisnika
+				}
+				return Integer.MAX_VALUE; 							// vraca ovu vrednost ako su skroz razliciti
+			}
+		
+		
+			//vraca listu filmova koji ce biti preporuceni ulogovanom korisniku
+			public List<Film> listaRazlicitihFilmova(Korisnik korisnik){
+				List<Korisnik> susedi = listaSuseda(korisnik);			//lista svih suseda
+				List<Film> filmovi = os.sviFilmovi(korisnik); 			//Svi filmovi koje je korisnik ocenio
+				List<Film> razlika = new ArrayList<Film>();				//lista preporucenih filmova
+				for(Korisnik k : susedi) {								//prolazi kroz sve susede
+						for(Ocena o:k.getOcene()) {						//prolazi kroz sve ocene za svakog suseda
+							Film f = o.getFilm();						//pronalazi film za ocenu
+							if(!filmovi.contains(f)) {					//ako je neko od suseda ocenio neki film, a ulogovani korisnik nije, taj film ce biti preporucen
+								if(!razlika.contains(f))				//izbegavamo duplikate na listi preporucenih filmova
+								razlika.add(f);							// dodajemo film 
+							}
+						}
+				}
+				return razlika;	
+			}
+
 	
 	// METODE SA DTO
 
@@ -517,60 +577,6 @@ public class FilmController {
 	 * 
 	 */
 
-	public List<Korisnik> predictReting1(Korisnik korisnik) {
-		ArrayList<Korisnik> susedi = crateSusede(korisnik);
-		return susedi;
-	}
-	
-	
-	private ArrayList<Korisnik> crateSusede(Korisnik activeUser) {
-		ArrayList<Korisnik> susedi = new ArrayList<Korisnik>(); 
-		List<Korisnik> sviUseri = ks.findAllByRoleUSER(); 
-			for(Korisnik k:sviUseri ) {
-				if(k.getIdKorisnik() != activeUser.getIdKorisnik()) {
-					double sim = calculateSim(activeUser,k);
-					if(sim<1) {
-						susedi.add(k);
-					}
-				}
-			}
-		return susedi;
-	}
 
-	private double calculateSim(Korisnik active, Korisnik p) {
-		int moviesInCommon =0; 
-		double diferenceSum=0;
-			for(Ocena o1:active.getOcene()) {
-				for(Ocena o2:p.getOcene()) {
-					Film f1 = o1.getFilm();
-					Film f2 = o2.getFilm();
-					
-					if(f1.getId() == f2.getId()) {
-						moviesInCommon++;
-						diferenceSum+= Math.abs(o1.getOcena()-o2.getOcena()); 
-					}
-				}	
-			}
-			if(moviesInCommon>0) {
-				return diferenceSum/moviesInCommon;
-			}
-			return Integer.MAX_VALUE; 
-		}
-	
-		public List<Film> listaRazlicitihFilmova(Korisnik korisnik){
-			List<Korisnik> susedi = predictReting1(korisnik);
-			List<Film> filmovi = os.sviFilmovi(korisnik); 
-			List<Film> razlika = new ArrayList<Film>();
-			for(Korisnik k : susedi) {
-					for(Ocena o:k.getOcene()) {
-						Film f = o.getFilm();
-						if(!filmovi.contains(f)) {
-							if(!razlika.contains(f))	
-							razlika.add(f);
-						}
-					}
-			}
-			return razlika;	
-		}
 
 }
